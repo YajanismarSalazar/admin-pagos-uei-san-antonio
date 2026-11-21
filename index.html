@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>U.E.I SAN ANTONIO C.A. — Panel Administrativo de Pagos</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <img src="./logo.jpg" alt="Logo U.E.I SAN ANTONIO C.A." class="brand-logo" />
+        <div>
+          <h1>U.E.I SAN ANTONIO C.A.</h1>
+          <div class="brand-sub">RIF: J303927017 · Telf: 0424-8912975</div>
+          <span class="brand-badge">ADMINISTRACIÓN Y CONCILIACIÓN</span>
+        </div>
+      </div>
+
+      <div id="header-controles" class="tasa-box oculto">
+        <label for="tasa-bcv-admin">Tasa BCV (Bs/$):</label>
+        <input type="number" id="tasa-bcv-admin" step="0.01" min="0.01" value="45.00" />
+        <button type="button" class="btn btn-light" onclick="actualizarTasaAdmin()">Aplicar</button>
+        <button type="button" class="btn btn-outline-light" id="btn-consultar-bcv" onclick="consultarTasaBCVAdmin()">Consultar BCV</button>
+        <button type="button" class="btn btn-outline-light" onclick="cerrarSesionAdmin()">Cerrar Sesión</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container main-content">
+    <!-- VISTA LOGIN -->
+    <section id="vista-login" class="login-wrapper">
+      <div class="card login-card">
+        <h2>Acceso Administrativo</h2>
+        <p class="muted">Ingresa tus credenciales para gestionar la conciliación de pagos y estados de cuenta.</p>
+
+        <form id="form-login" onsubmit="iniciarSesionAdmin(event)">
+          <div class="form-group">
+            <label for="login-usuario">Usuario</label>
+            <input type="text" id="login-usuario" placeholder="Ej: administrador1" autocomplete="off" required />
+          </div>
+
+          <div class="form-group">
+            <label for="login-clave">Contraseña</label>
+            <input type="password" id="login-clave" placeholder="••••••" required />
+          </div>
+
+          <p id="login-error" class="texto-error oculto"></p>
+
+          <button type="submit" class="btn btn-primary btn-block">Ingresar al Panel</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- VISTA DASHBOARD ADMINISTRATIVO -->
+    <section id="vista-admin" class="oculto">
+      <!-- TARJETAS RESUMEN -->
+      <div class="kpi-grid">
+        <div class="card kpi-card kpi-warning">
+          <span class="kpi-label">Pagos En Revisión</span>
+          <strong id="kpi-revision" class="kpi-value">0</strong>
+          <span id="kpi-revision-monto" class="muted small">$0.00 por confirmar</span>
+        </div>
+        <div class="card kpi-card kpi-success">
+          <span class="kpi-label">Pagos Confirmados</span>
+          <strong id="kpi-confirmados" class="kpi-value">0</strong>
+          <span id="kpi-confirmados-monto" class="muted small">$0.00 conciliados</span>
+        </div>
+        <div class="card kpi-card kpi-primary">
+          <span class="kpi-label">Cartera Pendiente (99 Alumnos)</span>
+          <strong id="kpi-deuda-usd" class="kpi-value">$0.00</strong>
+          <span id="kpi-deuda-bs" class="muted small">Bs. 0,00</span>
+        </div>
+        <div class="card kpi-card kpi-info">
+          <span class="kpi-label">Alumnos Solventes</span>
+          <strong id="kpi-solventes" class="kpi-value">0</strong>
+          <span class="muted small">Sin deuda acumulada</span>
+        </div>
+      </div>
+
+      <!-- NAVEGACIÓN DE PESTAÑAS -->
+      <div class="tabs-bar">
+        <button type="button" class="tab-btn active" id="tab-btn-conciliacion" onclick="cambiarTab('conciliacion')">
+          1. Conciliación de Pagos
+        </button>
+        <button type="button" class="tab-btn" id="tab-btn-manual" onclick="cambiarTab('manual')">
+          2. Registrar Pago Recibido (WhatsApp / Taquilla)
+        </button>
+        <button type="button" class="tab-btn" id="tab-btn-alumnos" onclick="cambiarTab('alumnos')">
+          3. Estado de Cuenta General (Alumnos)
+        </button>
+      </div>
+
+      <!-- TAB 1: BANDEJA DE CONCILIACIÓN -->
+      <div id="tab-conciliacion" class="tab-panel">
+        <div class="card">
+          <div class="card-header-flex">
+            <div>
+              <h2>Bandeja de Pagos Reportados</h2>
+              <p class="muted">Confirma o rechaza los pagos que quedaron en revisión. Al confirmar, se descuenta automáticamente del saldo del alumno.</p>
+            </div>
+            <div class="filtros-inline">
+              <select id="filtro-estado-pago" onchange="renderizarTablaPagos()">
+                <option value="TODOS">Todos los estados</option>
+                <option value="En Revisión" selected>En Revisión</option>
+                <option value="Confirmado">Confirmados</option>
+                <option value="Rechazado">Rechazados</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="tabla-datos">
+              <thead>
+                <tr>
+                  <th>Fecha / Recibo</th>
+                  <th>Alumno / Matrícula</th>
+                  <th>Conceptos</th>
+                  <th>Método y Ref.</th>
+                  <th>Monto USD / Bs.</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-pagos"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: REGISTRO MANUAL DE PAGO RECIBIDO POR WHATSAPP / TAQUILLA -->
+      <div id="tab-manual" class="tab-panel oculto">
+        <div class="card">
+          <h2>Registrar y Conciliar Pago Recibido por WhatsApp o Taquilla</h2>
+          <p class="muted">Busca al alumno por cédula o matrícula para cargar un comprobante enviado por el representante.</p>
+
+          <form class="buscador-form" onsubmit="buscarAlumnoParaPagoManual(event)">
+            <input type="text" id="manual-busqueda" placeholder="Ej: V-28110234 o matrícula 2024218" autocomplete="off" />
+            <button type="submit" class="btn btn-primary">Buscar Alumno</button>
+          </form>
+
+          <p id="manual-msg" class="helper-text">Ingresa una cédula o matrícula</p>
+
+          <div id="manual-formulario-box" class="manual-box oculto">
+            <div class="alumno-banner">
+              <div>
+                <span id="manual-alumno-anio" class="nivel-tag"></span>
+                <h3 id="manual-alumno-nombre"></h3>
+                <p id="manual-alumno-meta" class="muted small"></p>
+              </div>
+              <div id="manual-alumno-deuda" class="status-pill deuda"></div>
+            </div>
+
+            <div class="grid-dos-col">
+              <div>
+                <h4>Conceptos pendientes disponibles:</h4>
+                <div id="manual-conceptos-lista" class="lista-checks"></div>
+              </div>
+
+              <div>
+                <h4>Datos del comprobante:</h4>
+                <div class="form-group">
+                  <label for="manual-metodo">Método de Pago</label>
+                  <select id="manual-metodo">
+                    <option value="Pago Móvil">Pago Móvil</option>
+                    <option value="Transferencia Bancaria">Transferencia Bancaria</option>
+                    <option value="Efectivo USD ($)">Efectivo USD ($)</option>
+                    <option value="Cashea">Cashea</option>
+                    <option value="Punto de Venta">Punto de Venta</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="manual-referencia">Nro. de Referencia</label>
+                  <input type="text" id="manual-referencia" placeholder="Ej: 00458912" autocomplete="off" />
+                </div>
+
+                <div class="form-group">
+                  <label for="manual-estado-inicial">Estado al guardar</label>
+                  <select id="manual-estado-inicial">
+                    <option value="Confirmado">Confirmado (Descuenta deuda de inmediato)</option>
+                    <option value="En Revisión">Dejar En Revisión</option>
+                  </select>
+                </div>
+
+                <div class="resumen-manual">
+                  <div>Total seleccionado: <strong id="manual-total-usd">$0.00</strong></div>
+                  <div>Equivalente BCV: <strong id="manual-total-bs">Bs. 0,00</strong></div>
+                </div>
+
+                <button type="button" class="btn btn-primary btn-block" onclick="guardarPagoManual()">
+                  Guardar Comprobante
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: ESTADO DE CUENTA GENERAL DE LOS 99 ALUMNOS -->
+      <div id="tab-alumnos" class="tab-panel oculto">
+        <div class="card">
+          <div class="card-header-flex">
+            <div>
+              <h2>Estado de Cuenta General</h2>
+              <p class="muted">Consulta los 99 registros cargados, filtra por año/sección o descarga el reporte en PDF.</p>
+            </div>
+            <div class="filtros-inline">
+              <input type="text" id="filtro-texto-alumno" placeholder="Filtrar por nombre, cédula o matrícula..." oninput="renderizarTablaAlumnos()" />
+              <select id="filtro-anio-alumno" onchange="renderizarTablaAlumnos()">
+                <option value="TODOS">Todos los años</option>
+              </select>
+              <select id="filtro-solvencia-alumno" onchange="renderizarTablaAlumnos()">
+                <option value="TODOS">Todos</option>
+                <option value="PENDIENTE">Con Saldo Pendiente</option>
+                <option value="SOLVENTE">Solventes ($0.00)</option>
+              </select>
+              <button type="button" class="btn btn-primary" onclick="descargarEstadoCuentaPDF()">Descargar PDF</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="tabla-datos">
+              <thead>
+                <tr>
+                  <th>Matrícula</th>
+                  <th>Cédula</th>
+                  <th>Estudiante</th>
+                  <th>Año / Sección</th>
+                  <th>Representante</th>
+                  <th>Deuda Total USD</th>
+                  <th>Deuda Bs.</th>
+                  <th>Estatus</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-alumnos"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./data.js"></script>
+  <script src="./admin.js"></script>
+</body>
+</html>
