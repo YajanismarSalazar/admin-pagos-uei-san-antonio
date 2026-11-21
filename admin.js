@@ -258,7 +258,7 @@ function renderizarTablaPagos() {
 }
 
 function aplicarDescuentoDeudaAlumno(pago) {
-  const alumno = alumnosAdmin.find(a => a.matricula === pago.matricula);
+  const alumno = alumnosAdmin.find(a => String(a.matricula) === String(pago.matricula));
   if (!alumno) return;
 
   const listaConceptos = Array.isArray(pago.conceptos) ? pago.conceptos : [];
@@ -291,19 +291,17 @@ function aplicarDescuentoDeudaAlumno(pago) {
     if (tipo === "SALDO" || tipo === "SALDO_PERIODO" || desc.includes("SALDO")) {
       const montoDesc = Number(item.monto || p.saldo || 0);
       p.saldo = Math.max(0, Number((Number(p.saldo || 0) - montoDesc).toFixed(2)));
-      if (p.saldo <= 0) {
-        p.saldoEnRevision = false;
-      }
+      p.saldoEnRevision = false;
       return;
     }
 
     if (tipo === "MES" || tipo === "MENSUALIDAD") {
-      const mesNombre = item.mes || item.mesRaw || item.nombre || "";
+      const mesNombre = String(item.mes || item.mesRaw || item.nombre || "").trim();
       if (Array.isArray(p.mesesPendientes) && mesNombre) {
-        p.mesesPendientes = p.mesesPendientes.filter(m => m !== mesNombre);
+        p.mesesPendientes = p.mesesPendientes.filter(m => String(m).trim().toUpperCase() !== mesNombre.toUpperCase());
       }
       if (Array.isArray(p.mesesEnRevision) && mesNombre) {
-        p.mesesEnRevision = p.mesesEnRevision.filter(m => m !== mesNombre);
+        p.mesesEnRevision = p.mesesEnRevision.filter(m => String(m).trim().toUpperCase() !== mesNombre.toUpperCase());
       }
       return;
     }
@@ -315,19 +313,25 @@ function aplicarDescuentoDeudaAlumno(pago) {
     }
   });
 
-  if (calcularDeudaAlumno(alumno) <= 0) {
-    alumno.inscripcionEnRevision = false;
-    if (alumno.periodos) {
-      Object.keys(alumno.periodos).forEach(per => {
-        alumno.periodos[per].saldoEnRevision = false;
-        alumno.periodos[per].mesesEnRevision = [];
-      });
-    }
+  // Limpia cualquier bandera de revisión residual en el alumno
+  alumno.inscripcionEnRevision = false;
+  if (alumno.periodos) {
+    Object.keys(alumno.periodos).forEach(per => {
+      const p = alumno.periodos[per];
+      if (p) {
+        if (Number(p.saldo || 0) <= 0) {
+          p.saldoEnRevision = false;
+        }
+        if (Array.isArray(p.mesesEnRevision) && Array.isArray(p.mesesPendientes)) {
+          p.mesesEnRevision = p.mesesEnRevision.filter(m => p.mesesPendientes.includes(m));
+        }
+      }
+    });
   }
 }
 
 function limpiarBanderasRechazoAlumno(pago) {
-  const alumno = alumnosAdmin.find(a => a.matricula === pago.matricula);
+  const alumno = alumnosAdmin.find(a => String(a.matricula) === String(pago.matricula));
   if (!alumno) return;
 
   const listaConceptos = Array.isArray(pago.conceptos) ? pago.conceptos : [];
@@ -348,9 +352,9 @@ function limpiarBanderasRechazoAlumno(pago) {
         p.saldoEnRevision = false;
       }
       if (tipo === "MES" || tipo === "MENSUALIDAD") {
-        const mesNombre = item.mes || item.mesRaw || item.nombre || "";
+        const mesNombre = String(item.mes || item.mesRaw || item.nombre || "").trim();
         if (Array.isArray(p.mesesEnRevision) && mesNombre) {
-          p.mesesEnRevision = p.mesesEnRevision.filter(m => m !== mesNombre);
+          p.mesesEnRevision = p.mesesEnRevision.filter(m => String(m).trim().toUpperCase() !== mesNombre.toUpperCase());
         }
       }
     }
