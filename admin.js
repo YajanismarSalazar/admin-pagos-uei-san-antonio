@@ -12,6 +12,8 @@ let alumnosAdmin = [];
 let pagosReportados = [];
 let alumnoManualActual = null;
 let conceptosManualesDisponibles = [];
+let ultimoConteoRevision = -1;
+let intervaloSyncAdmin = null;
 
 function obtenerTasaInicialSistema() {
   const tasaGuardada = localStorage.getItem(STORAGE_KEY_TASA);
@@ -90,24 +92,87 @@ function iniciarSesionAdmin(event) {
 
 function cerrarSesionAdmin() {
   sessionStorage.removeItem(STORAGE_KEY_SESION);
+  if (intervaloSyncAdmin) {
+    clearInterval(intervaloSyncAdmin);
+    intervaloSyncAdmin = null;
+  }
   document.getElementById("vista-admin").classList.add("oculto");
   document.getElementById("header-controles").classList.add("oculto");
   document.getElementById("vista-login").classList.remove("oculto");
   document.getElementById("login-clave").value = "";
 }
 
+function mostrarNotificacionAdmin(texto, tipo = "info") {
+  let banner = document.getElementById("banner-notificacion-admin");
+  if (!banner) {
+    const vistaAdmin = document.getElementById("vista-admin");
+    if (!vistaAdmin) return;
+    banner = document.createElement("div");
+    banner.id = "banner-notificacion-admin";
+    banner.style.cssText =
+      "margin:12px 0;padding:12px 16px;border-radius:10px;font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 4px 12px rgba(0,0,0,0.08);";
+    vistaAdmin.insertBefore(banner, vistaAdmin.firstChild);
+  }
+
+  if (tipo === "alerta") {
+    banner.style.background = "#fff7ed";
+    banner.style.border = "1px solid #fdba74";
+    banner.style.color = "#9a3412";
+  } else {
+    banner.style.background = "#eff6ff";
+    banner.style.border = "1px solid #93c5fd";
+    banner.style.color = "#1e3a8a";
+  }
+
+  banner.innerHTML = `
+    <span>${texto}</span>
+    <button type="button" class="btn btn-primary" style="padding:5px 10px;font-size:0.8rem;" onclick="navegarDesdeKPI('REVISION')">Ir a Revisión</button>
+  `;
+  banner.classList.remove("oculto");
+}
+
+function verificarNuevosPagosEnTiempoReal() {
+  if (sessionStorage.getItem(STORAGE_KEY_SESION) !== "activa") return;
+  const conteoActual = pagosReportados.filter(p => p.estado === "En Revisión").length;
+  cargarDatosStorage();
+  const conteoNuevo = pagosReportados.filter(p => p.estado === "En Revisión").length;
+
+  if (ultimoConteoRevision !== -1 && conteoNuevo > ultimoConteoRevision) {
+    const diff = conteoNuevo - ultimoConteoRevision;
+    mostrarNotificacionAdmin(
+      `Nuevo pago reportado por representante: hay ${diff} comprobante(s) adicional(es) pendiente(s) por revisar (${conteoNuevo} en revisión).`,
+      "alerta"
+    );
+  } else if (conteoNuevo > 0 && !document.getElementById("banner-notificacion-admin")) {
+    mostrarNotificacionAdmin(
+      `Tienes ${conteoNuevo} pago(s) pendiente(s) por conciliar en revisión.`,
+      "alerta"
+    );
+  }
+
+  ultimoConteoRevision = conteoNuevo;
+  if (conteoNuevo !== conteoActual) {
+    actualizarDashboardCompleto();
+  }
+}
+
 function navegarDesdeKPI(destino) {
+  const selectEstadoPago = document.getElementById("filtro-estado-pago");
   if (destino === "REVISION") {
     cambiarTab("conciliacion");
-    const filtroPago = document.getElementById("filtro-estado-pago");
-    if (filtroPago) filtroPago.value = "En Revisión";
+    if (selectEstadoPago) selectEstadoPago.value = "En Revisión";
     renderizarTablaPagos();
     const tabla = document.getElementById("tab-conciliacion");
     if (tabla) tabla.scrollIntoView({ behavior: "smooth", block: "start" });
   } else if (destino === "CONFIRMADOS") {
     cambiarTab("conciliacion");
-    const filtroPago = document.getElementById("filtro-estado-pago");
-    if (filtroPago) filtroPago.value = "Confirmado";
+    if (selectEstadoPago) selectEstadoPago.value = "Confirmado";
+    renderizarTablaPagos();
+    const tabla = document.getElementById("tab-conciliacion");
+    if (tabla) tabla.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (destino === "RECHAZADOS") {
+    cambiarTab("conciliacion");
+    if (selectEstadoPago) selectEstadoPago.value = "Rechazado";
     renderizarTablaPagos();
     const tabla = document.getElementById("tab-conciliacion");
     if (tabla) tabla.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -128,10 +193,54 @@ function navegarDesdeKPI(destino) {
   }
 }
 
+function crearTarjetaRechazadosSiNoExiste() {
+  const kpiConfirmados = document.getElementById("kpi-confirmados");
+  if (!kpiConfirmados || document.getElementById("kpi-rechazados")) return;
+
+  const tarjetaRef = kpiConfirmados.closest(".kpi-card, .card, div") || kpiConfirmados.parentElement;
+  if (!tarjetaRef || !tarjetaRef.parentElement) return;
+
+  const nuevaTarjeta = tarjetaRef.cloneNode(true);
+  nuevaTarjeta.removeAttribute("data-kpi-vinculado");
+
+  // Reemplaza el id del valor numérico dentro de la tarjeta clonada
+  const spans = nuevaTarjeta.querySelectorAll("span, div, p, h2, h3, strong");
+  let asignadoId = false;
+  spans.forEach((node) => {
+    if (node.id === "kpi-confirmados") {
+      node.id = "kpi-rechazados";
+      node.textContent = "0";
+      asignadoId = true;
+    } else if (!asignadoId && /^\d+/.test(node.textContent.trim())) {
+      node.id = "kpi-rechazados";
+      node.textContent = "0";
+      asignadoId = true;
+    } else if (node.id === "kpi-confirmados-monto") {
+      node.id = "kpi-rechazados-monto";
+      node.textContent = "$0.00 rechazados";
+    } else if (/rechazad|confirmad|conciliad/i.test(node.textContent)) {
+      node.textContent = node.textContent.replace(/Confirmad[oa]s?/i, "Rechazados").replace(/conciliados/i, "rechazados");
+    }
+  });
+
+  if (!asignadoId) {
+    const valEl = document.createElement("div");
+    valEl.id = "kpi-rechazados";
+    valEl.style.fontWeight = "700";
+    valEl.textContent = "0";
+    nuevaTarjeta.appendChild(valEl);
+  }
+
+  tarjetaRef.parentElement.appendChild(nuevaTarjeta);
+}
+
 function activarTarjetasKPIClicables() {
+  crearTarjetaRechazadosSiNoExiste();
+
   const mapaKPIs = [
     { idValor: "kpi-revision", accion: "REVISION", titulo: "Ver historial de pagos en revisión" },
-    { idValor: "kpi-confirmados", accion: "CONFIRMADOS", titulo: "Ver historial de pagos confirmados" },
+    { idValor: "kpi-confirmados", accion: "CONFIRMADOS", titulo: "Ver historial de pagos aprobados/confirmados" },
+    { idValor: "kpi-rechazados", accion: "RECHAZADOS", titulo: "Ver historial de pagos rechazados" },
     { idValor: "kpi-deuda-usd", accion: "PENDIENTE", titulo: "Ver lista de alumnos con cartera pendiente" },
     { idValor: "kpi-solventes", accion: "SOLVENTES", titulo: "Ver lista de alumnos solventes" }
   ];
@@ -168,9 +277,27 @@ function mostrarPanelAdmin() {
   if (pagosReportados.length === 0) {
     cargarPagosDemoIniciales();
   }
+  ultimoConteoRevision = pagosReportados.filter(p => p.estado === "En Revisión").length;
+
   poblarFiltroAnios();
   activarTarjetasKPIClicables();
   actualizarDashboardCompleto();
+
+  if (ultimoConteoRevision > 0) {
+    mostrarNotificacionAdmin(
+      `Tienes ${ultimoConteoRevision} pago(s) pendiente(s) por revisar en Conciliación de Pagos.`,
+      "alerta"
+    );
+  }
+
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY_PORTAL) {
+      verificarNuevosPagosEnTiempoReal();
+    }
+  });
+
+  if (intervaloSyncAdmin) clearInterval(intervaloSyncAdmin);
+  intervaloSyncAdmin = setInterval(verificarNuevosPagosEnTiempoReal, 2500);
 }
 
 function actualizarTasaAdmin() {
@@ -253,9 +380,11 @@ function calcularDeudaAlumno(alumno) {
 function actualizarKPIs() {
   const enRevision = pagosReportados.filter(p => p.estado === "En Revisión");
   const confirmados = pagosReportados.filter(p => p.estado === "Confirmado");
+  const rechazados = pagosReportados.filter(p => p.estado === "Rechazado");
 
   const sumaRevision = enRevision.reduce((acc, p) => acc + Number(p.totalUSD || 0), 0);
   const sumaConfirmados = confirmados.reduce((acc, p) => acc + Number(p.totalUSD || 0), 0);
+  const sumaRechazados = rechazados.reduce((acc, p) => acc + Number(p.totalUSD || 0), 0);
 
   let deudaTotal = 0;
   let solventes = 0;
@@ -265,21 +394,44 @@ function actualizarKPIs() {
     if (d <= 0) solventes++;
   });
 
-  document.getElementById("kpi-revision").textContent = enRevision.length;
-  document.getElementById("kpi-revision-monto").textContent = formatearUSD(sumaRevision) + " por confirmar";
+  const elRev = document.getElementById("kpi-revision");
+  const elRevMonto = document.getElementById("kpi-revision-monto");
+  if (elRev) elRev.textContent = enRevision.length;
+  if (elRevMonto) elRevMonto.textContent = formatearUSD(sumaRevision) + " por confirmar";
 
-  document.getElementById("kpi-confirmados").textContent = confirmados.length;
-  document.getElementById("kpi-confirmados-monto").textContent = formatearUSD(sumaConfirmados) + " conciliados";
+  const elConf = document.getElementById("kpi-confirmados");
+  const elConfMonto = document.getElementById("kpi-confirmados-monto");
+  if (elConf) elConf.textContent = confirmados.length;
+  if (elConfMonto) elConfMonto.textContent = formatearUSD(sumaConfirmados) + " conciliados";
 
-  document.getElementById("kpi-deuda-usd").textContent = formatearUSD(deudaTotal);
-  document.getElementById("kpi-deuda-bs").textContent = formatearBs(deudaTotal);
+  const elRech = document.getElementById("kpi-rechazados");
+  const elRechMonto = document.getElementById("kpi-rechazados-monto");
+  if (elRech) elRech.textContent = rechazados.length;
+  if (elRechMonto) elRechMonto.textContent = formatearUSD(sumaRechazados) + " rechazados";
 
-  document.getElementById("kpi-solventes").textContent = solventes + " / " + alumnosAdmin.length;
+  const elDeudaUsd = document.getElementById("kpi-deuda-usd");
+  const elDeudaBs = document.getElementById("kpi-deuda-bs");
+  if (elDeudaUsd) elDeudaUsd.textContent = formatearUSD(deudaTotal);
+  if (elDeudaBs) elDeudaBs.textContent = formatearBs(deudaTotal);
+
+  const elSolv = document.getElementById("kpi-solventes");
+  if (elSolv) elSolv.textContent = solventes + " / " + alumnosAdmin.length;
 }
 
 function renderizarTablaPagos() {
   const tbody = document.getElementById("tbody-pagos");
-  const filtro = document.getElementById("filtro-estado-pago").value;
+  const selectFiltro = document.getElementById("filtro-estado-pago");
+  if (!tbody || !selectFiltro) return;
+
+  // Asegura que el selector incluya la opción Rechazado
+  if (![...selectFiltro.options].some(o => o.value === "Rechazado")) {
+    const opt = document.createElement("option");
+    opt.value = "Rechazado";
+    opt.textContent = "Rechazado";
+    selectFiltro.appendChild(opt);
+  }
+
+  const filtro = selectFiltro.value;
   tbody.innerHTML = "";
 
   const filtrados = pagosReportados.filter(p => filtro === "TODOS" || p.estado === filtro);
@@ -431,26 +583,30 @@ function confirmarPago(pagoId) {
   if (!pago || pago.estado !== "En Revisión") return;
 
   pago.estado = "Confirmado";
-  pago.fechaConciliacion = new Date().toLocaleDateString("es-VE");
+  pago.fechaConciliacion = "Aprobado · " + new Date().toLocaleDateString("es-VE");
   aplicarDescuentoDeudaAlumno(pago);
 
   guardarDatosStorage();
+  ultimoConteoRevision = pagosReportados.filter(p => p.estado === "En Revisión").length;
   actualizarDashboardCompleto();
+  mostrarNotificacionAdmin(`Pago ${pago.id} aprobado y sincronizado con el portal del representante.`, "info");
 }
 
 function rechazarPago(pagoId) {
   const pago = pagosReportados.find(p => p.id === pagoId);
   if (!pago || pago.estado !== "En Revisión") return;
 
-  const motivo = prompt("Motivo del rechazo (opcional):", "Referencia no localizada en banco");
+  const motivo = prompt("Motivo del rechazo (se mostrará al representante):", "Referencia no localizada en banco");
   if (motivo === null) return;
 
   pago.estado = "Rechazado";
-  pago.fechaConciliacion = motivo || "Rechazado";
+  pago.fechaConciliacion = motivo || "Rechazado por administración";
   limpiarBanderasRechazoAlumno(pago);
 
   guardarDatosStorage();
+  ultimoConteoRevision = pagosReportados.filter(p => p.estado === "En Revisión").length;
   actualizarDashboardCompleto();
+  mostrarNotificacionAdmin(`Pago ${pago.id} rechazado y sincronizado con el portal del representante.`, "info");
 }
 
 function cargarPagosDemoIniciales() {
@@ -625,7 +781,7 @@ function guardarPagoManual() {
     referencia: referencia || "Taquilla",
     totalUSD,
     estado: estadoInicial,
-    fechaConciliacion: estadoInicial === "Confirmado" ? new Date().toLocaleDateString("es-VE") : "",
+    fechaConciliacion: estadoInicial === "Confirmado" ? "Aprobado · " + new Date().toLocaleDateString("es-VE") : "",
     conceptos: seleccionados
   };
 
@@ -635,6 +791,7 @@ function guardarPagoManual() {
 
   pagosReportados.unshift(nuevoPago);
   guardarDatosStorage();
+  ultimoConteoRevision = pagosReportados.filter(p => p.estado === "En Revisión").length;
   actualizarDashboardCompleto();
 
   document.getElementById("manual-referencia").value = "";
