@@ -96,6 +96,69 @@ function cerrarSesionAdmin() {
   document.getElementById("login-clave").value = "";
 }
 
+function navegarDesdeKPI(destino) {
+  if (destino === "REVISION") {
+    cambiarTab("conciliacion");
+    const filtroPago = document.getElementById("filtro-estado-pago");
+    if (filtroPago) filtroPago.value = "En Revisión";
+    renderizarTablaPagos();
+    const tabla = document.getElementById("tab-conciliacion");
+    if (tabla) tabla.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (destino === "CONFIRMADOS") {
+    cambiarTab("conciliacion");
+    const filtroPago = document.getElementById("filtro-estado-pago");
+    if (filtroPago) filtroPago.value = "Confirmado";
+    renderizarTablaPagos();
+    const tabla = document.getElementById("tab-conciliacion");
+    if (tabla) tabla.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (destino === "PENDIENTE") {
+    cambiarTab("alumnos");
+    const filtroSolv = document.getElementById("filtro-solvencia-alumno");
+    if (filtroSolv) filtroSolv.value = "PENDIENTE";
+    renderizarTablaAlumnos();
+    const tabla = document.getElementById("tab-alumnos");
+    if (tabla) tabla.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (destino === "SOLVENTES") {
+    cambiarTab("alumnos");
+    const filtroSolv = document.getElementById("filtro-solvencia-alumno");
+    if (filtroSolv) filtroSolv.value = "SOLVENTE";
+    renderizarTablaAlumnos();
+    const tabla = document.getElementById("tab-alumnos");
+    if (tabla) tabla.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function activarTarjetasKPIClicables() {
+  const mapaKPIs = [
+    { idValor: "kpi-revision", accion: "REVISION", titulo: "Ver historial de pagos en revisión" },
+    { idValor: "kpi-confirmados", accion: "CONFIRMADOS", titulo: "Ver historial de pagos confirmados" },
+    { idValor: "kpi-deuda-usd", accion: "PENDIENTE", titulo: "Ver lista de alumnos con cartera pendiente" },
+    { idValor: "kpi-solventes", accion: "SOLVENTES", titulo: "Ver lista de alumnos solventes" }
+  ];
+
+  mapaKPIs.forEach(({ idValor, accion, titulo }) => {
+    const el = document.getElementById(idValor);
+    if (!el) return;
+    const tarjeta = el.closest(".kpi-card, .card, div") || el.parentElement;
+    if (!tarjeta || tarjeta.dataset.kpiVinculado === "1") return;
+
+    tarjeta.dataset.kpiVinculado = "1";
+    tarjeta.style.cursor = "pointer";
+    tarjeta.style.transition = "transform 0.15s ease, box-shadow 0.15s ease";
+    tarjeta.title = titulo;
+
+    tarjeta.addEventListener("mouseenter", () => {
+      tarjeta.style.transform = "translateY(-2px)";
+      tarjeta.style.boxShadow = "0 8px 20px rgba(21, 69, 184, 0.14)";
+    });
+    tarjeta.addEventListener("mouseleave", () => {
+      tarjeta.style.transform = "";
+      tarjeta.style.boxShadow = "";
+    });
+    tarjeta.addEventListener("click", () => navegarDesdeKPI(accion));
+  });
+}
+
 function mostrarPanelAdmin() {
   document.getElementById("vista-login").classList.add("oculto");
   document.getElementById("vista-admin").classList.remove("oculto");
@@ -106,6 +169,7 @@ function mostrarPanelAdmin() {
     cargarPagosDemoIniciales();
   }
   poblarFiltroAnios();
+  activarTarjetasKPIClicables();
   actualizarDashboardCompleto();
 }
 
@@ -163,8 +227,10 @@ function cambiarTab(nombreTab) {
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.add("oculto"));
 
-  document.getElementById("tab-btn-" + nombreTab).classList.add("active");
-  document.getElementById("tab-" + nombreTab).classList.remove("oculto");
+  const btn = document.getElementById("tab-btn-" + nombreTab);
+  const panel = document.getElementById("tab-" + nombreTab);
+  if (btn) btn.classList.add("active");
+  if (panel) panel.classList.remove("oculto");
 }
 
 function calcularDeudaAlumno(alumno) {
@@ -313,7 +379,6 @@ function aplicarDescuentoDeudaAlumno(pago) {
     }
   });
 
-  // Limpia cualquier bandera de revisión residual en el alumno
   alumno.inscripcionEnRevision = false;
   if (alumno.periodos) {
     Object.keys(alumno.periodos).forEach(per => {
