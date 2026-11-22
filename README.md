@@ -11,8 +11,8 @@ Web Site: https://yajanismarsalazar.github.io/admin-pagos-uei-san-antonio/
 - **Ubicación:** Upata, Estado Bolívar, Venezuela
 
 ## Credenciales de acceso (Demo)
-- **Usuario:** `administrador1`
-- **Contraseña:** `123456`
+- **Usuario:** `adm1`
+- **Contraseña:** `12345`
 
 ## Estructura del proyecto
 - `index.html`: Interfaz de inicio de sesión y panel administrativo con pestañas de conciliación, registro manual y estado de cuenta general.
