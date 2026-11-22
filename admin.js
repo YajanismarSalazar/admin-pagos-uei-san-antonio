@@ -3,8 +3,8 @@ const STORAGE_KEY_SESION = "uei_san_antonio_admin_sesion";
 const STORAGE_KEY_TASA = "uei_san_antonio_admin_tasa";
 
 const CREDENCIALES_ADMIN = {
-  usuariosValidos: ["administrador1", "administrador 1"],
-  clave: "123456"
+  usuariosValidos: ["adm1"],
+  clave: "12345"
 };
 
 let tasaBCVActual = 45.00;
