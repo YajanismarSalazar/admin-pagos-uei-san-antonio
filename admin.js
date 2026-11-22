@@ -131,6 +131,74 @@ function mostrarNotificacionAdmin(texto, tipo = "info") {
   banner.classList.remove("oculto");
 }
 
+function renderizarBandejaDirectaWhatsApp() {
+  const tabManual = document.getElementById("tab-manual");
+  if (!tabManual) return;
+
+  let cajaDirecta = document.getElementById("bandeja-directa-whatsapp");
+  if (!cajaDirecta) {
+    cajaDirecta = document.createElement("div");
+    cajaDirecta.id = "bandeja-directa-whatsapp";
+    cajaDirecta.style.cssText =
+      "margin-bottom:20px;padding:16px;border:1px solid #bfdbfe;border-radius:12px;background:#f8fafc;";
+    tabManual.insertBefore(cajaDirecta, tabManual.firstChild);
+  }
+
+  const pendientes = pagosReportados.filter(p => p.estado === "En Revisión");
+
+  if (!pendientes.length) {
+    cajaDirecta.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div>
+          <strong style="color:#1e3a8a;font-size:1rem;">Pagos Reportados por Representantes (Vía WhatsApp / Portal)</strong>
+          <div class="muted small">No hay comprobantes pendientes por conciliar en este momento.</div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const itemsHtml = pendientes
+    .map((p) => {
+      const conceptosTxt = Array.isArray(p.conceptos)
+        ? p.conceptos.map(c => c.descripcion || c.nombre || c).join(", ")
+        : "Concepto pendiente";
+
+      return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;margin-top:10px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;flex-wrap:wrap;">
+          <div style="min-width:220px;flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <strong>${p.alumnoNombre}</strong>
+              <span class="badge badge-revision">En Revisión</span>
+            </div>
+            <div class="muted small">Matrícula: <strong>${p.matricula}</strong> · Comprobante: <strong>${p.id}</strong> · ${p.fecha}</div>
+            <div class="small" style="color:#1e3a8a;margin-top:3px;"><strong>Conceptos:</strong> ${conceptosTxt}</div>
+            <div class="muted small">Método: ${p.metodo} · Ref: ${p.referencia || "N/A"}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:1.05rem;font-weight:700;color:#0f172a;">${formatearUSD(p.totalUSD)}</div>
+            <div class="muted small" style="margin-bottom:8px;">${formatearBs(p.totalUSD)}</div>
+            <div class="acciones-celda">
+              <button type="button" class="btn btn-success" onclick="confirmarPago('${p.id}')">Confirmar</button>
+              <button type="button" class="btn btn-danger" onclick="rechazarPago('${p.id}')">Rechazar</button>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  cajaDirecta.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div>
+        <strong style="color:#1e3a8a;font-size:1rem;">Pagos Reportados por Representantes (${pendientes.length} en revisión)</strong>
+        <div class="muted small">Selecciona directamente para aprobar o rechazar sin tener que buscar por cédula o matrícula.</div>
+      </div>
+    </div>
+    ${itemsHtml}
+  `;
+}
+
 function verificarNuevosPagosEnTiempoReal() {
   if (sessionStorage.getItem(STORAGE_KEY_SESION) !== "activa") return;
   const conteoActual = pagosReportados.filter(p => p.estado === "En Revisión").length;
@@ -153,6 +221,8 @@ function verificarNuevosPagosEnTiempoReal() {
   ultimoConteoRevision = conteoNuevo;
   if (conteoNuevo !== conteoActual) {
     actualizarDashboardCompleto();
+  } else {
+    renderizarBandejaDirectaWhatsApp();
   }
 }
 
@@ -203,7 +273,6 @@ function crearTarjetaRechazadosSiNoExiste() {
   const nuevaTarjeta = tarjetaRef.cloneNode(true);
   nuevaTarjeta.removeAttribute("data-kpi-vinculado");
 
-  // Reemplaza el id del valor numérico dentro de la tarjeta clonada
   const spans = nuevaTarjeta.querySelectorAll("span, div, p, h2, h3, strong");
   let asignadoId = false;
   spans.forEach((node) => {
@@ -358,6 +427,11 @@ function cambiarTab(nombreTab) {
   const panel = document.getElementById("tab-" + nombreTab);
   if (btn) btn.classList.add("active");
   if (panel) panel.classList.remove("oculto");
+
+  if (nombreTab === "manual") {
+    cargarDatosStorage();
+    renderizarBandejaDirectaWhatsApp();
+  }
 }
 
 function calcularDeudaAlumno(alumno) {
@@ -423,7 +497,6 @@ function renderizarTablaPagos() {
   const selectFiltro = document.getElementById("filtro-estado-pago");
   if (!tbody || !selectFiltro) return;
 
-  // Asegura que el selector incluya la opción Rechazado
   if (![...selectFiltro.options].some(o => o.value === "Rechazado")) {
     const opt = document.createElement("option");
     opt.value = "Rechazado";
@@ -589,7 +662,7 @@ function confirmarPago(pagoId) {
   guardarDatosStorage();
   ultimoConteoRevision = pagosReportados.filter(p => p.estado === "En Revisión").length;
   actualizarDashboardCompleto();
-  mostrarNotificacionAdmin(`Pago ${pago.id} aprobado y sincronizado con el portal del representante.`, "info");
+  mostrarNotificacionAdmin(`Pago ${pago.id} (${pago.alumnoNombre}) aprobado y sincronizado con el portal.`, "info");
 }
 
 function rechazarPago(pagoId) {
@@ -606,7 +679,7 @@ function rechazarPago(pagoId) {
   guardarDatosStorage();
   ultimoConteoRevision = pagosReportados.filter(p => p.estado === "En Revisión").length;
   actualizarDashboardCompleto();
-  mostrarNotificacionAdmin(`Pago ${pago.id} rechazado y sincronizado con el portal del representante.`, "info");
+  mostrarNotificacionAdmin(`Pago ${pago.id} (${pago.alumnoNombre}) rechazado y sincronizado con el portal.`, "info");
 }
 
 function cargarPagosDemoIniciales() {
@@ -968,6 +1041,7 @@ function actualizarDashboardCompleto() {
   actualizarKPIs();
   renderizarTablaPagos();
   renderizarTablaAlumnos();
+  renderizarBandejaDirectaWhatsApp();
 }
 
 window.addEventListener("DOMContentLoaded", () => {
